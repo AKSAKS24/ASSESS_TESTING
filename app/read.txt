@@ -1,0 +1,12 @@
+[
+  {
+    "pgm_name": "ZTEST_TABLE_REPLACE",
+    "inc_name": "ZTEST_TABLE_REPLACE",
+    "type": "PROG",
+    "name": "ZTEST_TABLE_REPLACE",
+    "class_implementation": null,
+    "start_line": 10,
+    "end_line": 300,
+    "code": "REPORT ztest_table_replace.\n\nDATA: lt_s066 TYPE TABLE OF s066,\n      lt_s067 TYPE TABLE OF s067,\n      lt_bsid TYPE TABLE OF bsid,\n      lt_bsad TYPE TABLE OF bsad,\n      lt_lips TYPE TABLE OF lips,\n      ls_lips TYPE lips,\n      lt_bkpf TYPE TABLE OF bkpf,\n      lt_bseg TYPE TABLE OF bseg,\n      lv_count TYPE i.\n\nSELECT * FROM s066 INTO TABLE lt_s066 WHERE mandt = '100'.\nSELECT * FROM s067 INTO TABLE lt_s067 WHERE bukrs = '1000'.\n\nSELECT bukrs belnr gjahr dmbtr FROM bsid INTO TABLE lt_bsid WHERE bukrs = '1000'.\nSELECT * FROM bsad INTO TABLE lt_bsad WHERE kunnr = '123456'.\n\nSELECT * FROM lips INTO TABLE lt_lips WHERE vbeln = '80000123'.\n\nLOOP AT lt_lips INTO ls_lips.\n  WRITE: / ls_lips-vbeln, ls_lips-posnr.\nENDLOOP.\n\nUPDATE bkpf SET xblnr = 'UPDATED' WHERE bukrs = '1000' AND belnr = '90001234'.\n\nMODIFY bseg FROM TABLE lt_bseg.\nDELETE FROM bseg WHERE bukrs = '2000'.\n\nCLEAR bsid.\n\nlv_count = bsad.\nbsad = lv_count.\n\nASSIGN bseg->dmbtr TO FIELD-SYMBOL(<fs_bseg>). \n\nWRITE: / 'Checking table S066 for processing'.\nWRITE: / 'Relevant data coming from table BSID'.\nWRITE: / 'Perform reconciliation on table LIPS'.\n"
+  }
+]
