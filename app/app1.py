@@ -8,7 +8,7 @@ import re
 # ---------------------------------------------------------------------
 # APP INIT
 # ---------------------------------------------------------------------
-app = FastAPI(title="Legacy Table Scanner (Header + Findings Version)")
+app = FastAPI(title="Legacy Table Scanner (Refactored Version)")
 
 
 # ---------------------------------------------------------------------
@@ -51,9 +51,23 @@ REGEX: Dict[str, re.Pattern] = {
 
 
 # ---------------------------------------------------------------------
-# RESPONSE MODELS (as you requested)
+# PAYLOAD MODEL
 # ---------------------------------------------------------------------
-class Finding(BaseModel): 
+class Unit(BaseModel):
+    pgm_name: str
+    inc_name: str
+    type: str
+    name: Optional[str] = None
+    class_implementation: Optional[str] = None
+    start_line: Optional[int] = None
+    end_line: Optional[int] = None
+    code: Optional[str] = ""
+
+
+# ---------------------------------------------------------------------
+# RESPONSE MODEL
+# ---------------------------------------------------------------------
+class Issue(BaseModel):
     pgm_name: Optional[str] = None
     inc_name: Optional[str] = None
     type: Optional[str] = None
@@ -62,21 +76,9 @@ class Finding(BaseModel):
     end_line: Optional[int] = None
     issue_type: Optional[str] = None   # "DirectRead" | "DisallowedWrite"
     severity: Optional[str] = None     # "info" | "warning" | "error"
-    line: Optional[int] = None         # convenience: same as start_line (global)
     message: Optional[str] = None
     suggestion: Optional[str] = None
-    snippet: Optional[str] = None      # full line where issue occurs
-
-
-class Unit(BaseModel):
-    pgm_name: str
-    inc_name: str
-    type: str
-    name: Optional[str] = ""
-    start_line: Optional[int] = 0
-    end_line: Optional[int] = 0
-    code: Optional[str] = ""
-    findings: Optional[List[Finding]] = None
+    snippet: Optional[str] = None
 
 
 # ---------------------------------------------------------------------
@@ -91,7 +93,7 @@ def get_line_snippet(text: str, start: int, end: int) -> str:
     if line_start == -1:
         line_start = 0
     else:
-        line_start += 1  # right after '\n'
+        line_start += 1  # right after the '\n'
 
     line_end = text.find("\n", end)
     if line_end == -1:
@@ -121,7 +123,7 @@ def classify_issue(
             issue_type = "DisallowedWrite"
             severity = "error"
     else:
-        # CLEAR, ASSIGN, GENERIC – treat as read-like access
+        # CLEAR, ASSIGN, GENERIC – treat as direct access
         issue_type = "DirectRead"
         severity = "info"
 
@@ -157,7 +159,7 @@ def find_table_usage(txt: str) -> List[Dict[str, Any]]:
       - span: (start_char, end_char)
     """
     matches: List[Dict[str, Any]] = []
-    seen = set()  # avoid duplicates (table, line_no, pattern)
+    seen = set()  # avoid duplicates (table, line_no)
 
     for pattern_name, pattern in REGEX.items():
         for m in pattern.finditer(txt or ""):
@@ -168,7 +170,7 @@ def find_table_usage(txt: str) -> List[Dict[str, Any]]:
 
             start, end = m.span("full")
 
-            # Dedup by (table_name, line number, pattern)
+            # Dedup by (table_name, line number)
             line_no = txt[:start].count("\n") + 1
             key = (obj, line_no, pattern_name)
             if key in seen:
@@ -189,35 +191,34 @@ def find_table_usage(txt: str) -> List[Dict[str, Any]]:
                 }
             )
 
+    # sort by where they appear in the code
     matches.sort(key=lambda x: x["span"][0])
     return matches
 
 
 # ---------------------------------------------------------------------
 # API: /remediate-tables
-#   - Request: List[Unit] (pgm_name, inc_name, type, name, start_line, end_line, code)
-#   - Response: List[Unit] with findings populated
+# (same endpoint name, new response structure)
 # ---------------------------------------------------------------------
-@app.post("/remediate-tables", response_model=List[Unit])
-def remediate_tables(units: List[Unit]) -> List[Unit]:
-    result_units: List[Unit] = []
+@app.post("/remediate-tables", response_model=List[Issue])
+def remediate_tables(units: List[Unit]) -> List[Issue]:
+    all_issues: List[Issue] = []
 
     for u in units:
         src = u.code or ""
-        base_start = u.start_line or 0  # block start line in program
-        findings: List[Finding] = []
+        base_start = u.start_line or 0
 
         for m in find_table_usage(src):
             start, end = m["span"]
 
-            # Line within this block (1-based)
+            # Compute line offset inside this block
             line_in_block = src[:start].count("\n") + 1
 
             # Snippet = full line containing the match
-            snippet_line = get_line_snippet(src, start, end)
-            snippet_line_count = snippet_line.count("\n") + 1  # usually 1
+            snippet_text = get_line_snippet(src, start, end)
+            snippet_line_count = snippet_text.count("\n") + 1  # mostly 1
 
-            # Absolute line numbers in the full program
+            # Absolute line numbers (following your original rule)
             start_line_abs = base_start + line_in_block
             end_line_abs = base_start + line_in_block + snippet_line_count
 
@@ -232,25 +233,19 @@ def remediate_tables(units: List[Unit]) -> List[Unit]:
                 replacement=replacement,
             )
 
-            finding = Finding(
+            issue = Issue(
                 pgm_name=u.pgm_name,
                 inc_name=u.inc_name,
                 type=u.type,
                 name=u.name,
                 start_line=start_line_abs,
                 end_line=end_line_abs,
-                line=start_line_abs,  # single line indicator
                 issue_type=issue_meta["issue_type"],
                 severity=issue_meta["severity"],
                 message=issue_meta["message"],
                 suggestion=issue_meta["suggestion"],
-                snippet=snippet_line.replace("\n", "\\n"),
+                snippet=snippet_text.replace("\n", "\\n"),
             )
-            findings.append(finding)
+            all_issues.append(issue)
 
-        # Build response Unit: copy header and attach findings
-        out_unit = Unit(**u.model_dump())
-        out_unit.findings = findings
-        result_units.append(out_unit)
-
-    return result_units
+    return all_issues
