@@ -51,21 +51,20 @@ REGEX: Dict[str, re.Pattern] = {
 
 
 # ---------------------------------------------------------------------
-# RESPONSE MODELS (as you requested)
+# RESPONSE MODELS (Finding renamed as requested)
 # ---------------------------------------------------------------------
-class Finding(BaseModel): 
-    pgm_name: Optional[str] = None
-    inc_name: Optional[str] = None
-    type: Optional[str] = None
-    name: Optional[str] = None
-    start_line: Optional[int] = None
-    end_line: Optional[int] = None
-    issue_type: Optional[str] = None   # "DirectRead" | "DisallowedWrite"
-    severity: Optional[str] = None     # "info" | "warning" | "error"
-    line: Optional[int] = None         # convenience: same as start_line (global)
+class Finding(BaseModel):
+    prog_name: Optional[str] = None
+    incl_name: Optional[str] = None
+    types: Optional[str] = None
+    blockname: Optional[str] = None
+    starting_line: Optional[int] = None
+    ending_line: Optional[int] = None
+    issues_type: Optional[str] = None   # "DirectRead" | "DisallowedWrite"
+    severity: Optional[str] = None      # "info" | "warning" | "error"
     message: Optional[str] = None
     suggestion: Optional[str] = None
-    snippet: Optional[str] = None      # full line where issue occurs
+    snippet: Optional[str] = None       # full line where issue occurs
 
 
 class Unit(BaseModel):
@@ -196,7 +195,7 @@ def find_table_usage(txt: str) -> List[Dict[str, Any]]:
 # ---------------------------------------------------------------------
 # API: /remediate-tables
 #   - Request: List[Unit] (pgm_name, inc_name, type, name, start_line, end_line, code)
-#   - Response: List[Unit] with findings populated
+#   - Response: List[Unit] with findings populated (Finding using new field names)
 # ---------------------------------------------------------------------
 @app.post("/remediate-tables", response_model=List[Unit])
 def remediate_tables(units: List[Unit]) -> List[Unit]:
@@ -233,14 +232,13 @@ def remediate_tables(units: List[Unit]) -> List[Unit]:
             )
 
             finding = Finding(
-                pgm_name=u.pgm_name,
-                inc_name=u.inc_name,
-                type=u.type,
-                name=u.name,
-                start_line=start_line_abs,
-                end_line=end_line_abs,
-                line=start_line_abs,  # single line indicator
-                issue_type=issue_meta["issue_type"],
+                prog_name=u.pgm_name,
+                incl_name=u.inc_name,
+                types=u.type,
+                blockname=u.name,
+                starting_line=start_line_abs,
+                ending_line=end_line_abs,
+                issues_type=issue_meta["issue_type"],
                 severity=issue_meta["severity"],
                 message=issue_meta["message"],
                 suggestion=issue_meta["suggestion"],
